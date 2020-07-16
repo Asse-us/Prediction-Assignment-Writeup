@@ -1,0 +1,119 @@
+---
+title: "Prediction-Assignment-Writeup"
+author: "Assefa"
+date: "7/15/2020"
+output: html_document
+---
+
+#### 1. Project Overview  
+This project is focused on predicting the manner in which six young health participants aged between 20-28 years, with little weight lifting experience performed one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). All these excercises are in the variable name called "classe". The provided plm-training data set is partitioned in to training and validation data sets and pml-testing with 20 observations are available for test data set.  The links for the data are presented in the readme file.  
+
+#### 2. Loading and preprocessing the data   
+**Necessary packages**
+```{r echo=TRUE, results='hide', message=FALSE}
+library(knitr)
+library(caret)  
+library(MASS)
+library(klaR)
+library(rattle)
+library(readr) 
+library(ggplot2)
+```
+
+**Data downloading and reading**  
+```{r echo=TRUE, results='markup', message=FALSE}
+filePath<- getwd()
+fileName1<- "pml-training.csv"
+fileName2<- "pml-testing.csv"
+urll<- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url2<- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(urll, destfile = fileName1, method = "curl")
+download.file(url2, destfile = fileName2, method = "curl")
+
+trainingRD<- read.csv(fileName1)
+testingRD<- read.csv(fileName2)
+```
+
+**Cleaning the Data**  
+
+View(trainingRD); View(testingRD)
+
+As you can see from the above function, both data have columns with NA and contain unncessary variables. its should be removed before the analysis started.  
+
+```{r echo=TRUE, results='hide', message=FALSE}
+nearZero<- nearZeroVar(trainingRD)
+trainingRD <- trainingRD[ ,-nearZero]
+trainingRD<- trainingRD[ ,which(colSums(is.na(trainingRD))== 0)]
+
+# the first 7 columns are variables that has no relationship with "classe"
+trainingSet<- trainingRD[ ,-c(1:7)]
+testing<- testingRD[ ,-c(1:7)]
+```
+
+The following table shows the number of observations for each class category after the data is cleaned. 
+```{r echo=TRUE, results='markup', message=FALSE}
+table(trainingSet$classe)
+```
+
+#### 3. Creating train, test and validation data sets  
+```{r echo=TRUE, results='markup', message=FALSE}
+set.seed(12345)
+inTrain<- createDataPartition(y = trainingSet$classe, p = 0.7, list = FALSE)
+training<- trainingSet[inTrain, ]
+validation<- trainingSet[-inTrain, ]
+dim(training)
+dim(validation)
+dim(testing)
+```
+The following plots show, as sample observations, how four representative variables (total_accel_belt, total_accel_arm, total_accel_dumbbell and total_accel_forearm) were varied across the range of observations.  
+
+```{r echo=TRUE, results='markup', message=FALSE}
+par(mfrow = c(2, 2))
+plot(training$classe, training$total_accel_belt, xlab = "Class", ylab = "total_accel_belt", main = "Class vs Total acceleration on belt")
+plot(training$classe, training$total_accel_arm, xlab = "Class", ylab = "total_accel_arm", main = "Class vs Total acceleration on arm")
+plot(training$classe, training$total_accel_dumbbell, xlab = "Class", ylab = "total_accel_dumbbell", main = "Class vs Total acceleration on dumbbell")
+plot(training$classe, training$total_accel_forearm, xlab = "Class", ylab = "total_accel_forearm", main = "Class vs Total acceleration on forearm")
+```
+
+#### 4. Best fit model selection   
+Three models (lda, rpart and rf) were chosen and the best fit model is selected based on highest accuracy value.
+
+**1. Linear discriminant analysis ("lda")**  
+```{r echo=TRUE, results='markup', message=FALSE}
+mod_lda<- train(classe ~., data = training, method = "lda")
+plda <- predict(mod_lda, validation)
+confusionMatrix(plda, validation$classe)
+```
+
+**2. Recursive Partitioning ("rpart") and plot Trees**
+```{r echo=TRUE, message=FALSE, results='markup'}
+mod_rpart<- train(classe ~., data = training, method = "rpart")
+prpart<- predict(mod_rpart, validation)
+confusionMatrix(prpart, validation$classe)
+fancyRpartPlot(mod_rpart$finalModel)
+```
+
+**3. Random forest analysis("rf")**  
+```{r echo=TRUE, message=FALSE, results='markup'}
+mod_rf<- train(classe ~., method = "rf", data = training,  importance = T, trControl = trainControl(method = "cv", classProbs=TRUE,savePredictions=TRUE,allowParallel=TRUE, number =3))
+prf<- predict(mod_rf, validation)
+confusionMatrix(prf, validation$classe)
+```
+
+The above result show that the random forest model has the highest accuracy in cross validation. Therefore, we will use the random forest model for predicting test samples.  
+
+#### 5. Predictions with test data  
+since the random forest (rf) method has highest accurancy, it is selected to  predict the test sample.  
+
+```{r echo=TRUE, results='markup', message=FALSE}
+testing_pre<- predict(mod_rf, newdata = testing)
+testing_pre
+```
+
+#### 6. Conclusions  
+The pml-training dataset is splitted into training and validation data set to construct a predictive model and evaluate its accuracy. To select the best fit model, lda, rpart and rf models are applied.The rf is the best fit model and this model is used for predicting the test data.
+
+**REFERENCE**
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+Read more: http://groupware.les.inf.puc-rio.br/har#weight_lifting_exercises#ixzz6SGpbauXU
+
